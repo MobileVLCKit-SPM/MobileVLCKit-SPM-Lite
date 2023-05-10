@@ -1,4 +1,6 @@
-# MobileVLCKit-SPM
+# MobileVLCKit-SPM Lite Version
+
+without dsyms and simulator support 
 
 MobileVLCKit Swift Package Manager Support
 
