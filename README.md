@@ -8,12 +8,12 @@ in package.swift
 
 ```swift
     dependencies: [
-        .package(url: "https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM", from: "3.3.17"),
+        .package(url: "https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM-Lite", from: "3.5.1"),
     ],
 ```
 
 xcode project ：
 add package :
-https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM
+https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM-Lite
 
 download mobilevlc framework from : https://download.videolan.org/pub/cocoapods/prod
