@@ -1,10 +1,29 @@
-# MobileVLCKit-SPM Lite Version
+#  MobileVLCKit swift package support
+This project auto conver mobilevlckit from : https://download.videolan.org/pub/cocoapods/prod to swift 
 
-without dsyms and simulator support 
+# full support 
+MobileVLCKit with full dSYMs and simulator support (zip file size upto 1~2G)
+https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM
+```
+dependencies: [
+  .package(url: "https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM", from: "3.5.1"),
+]
+...
+targets: [
+          .target(
+              ...
+              dependencies: [
+                .product(name: "MobileVLCKit", package: "MobileVLCKit-SPM",condition: TargetDependencyCondition.when(platforms: [.iOS])),
+              ],
+             ...
+           )
+        ]
+)
+```
 
-MobileVLCKit Swift Package Manager Support
-
-in package.swift
+# lite support 
+MobileVLCKit without dSYMs and simulator support (zip file size will about 200m+ )
+[https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM](https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM-Lite)
 ```
 dependencies: [
   .package(url: "https://github.com/MobileVLCKit-SPM/MobileVLCKit-SPM-Lite", from: "3.5.1"),
@@ -21,8 +40,3 @@ targets: [
         ]
 )
 ```
-
-
-xcode project ：
-
-download mobilevlc framework from : https://download.videolan.org/pub/cocoapods/prod
