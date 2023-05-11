@@ -16,7 +16,9 @@ from bs4 import BeautifulSoup
 from github import Github, GitRelease, GitReleaseAsset, Repository, PaginatedList, Tag
 
 from Shell import Shell
-
+import urllib
+urllib.request.urlcleanup()
+# urllib.urlcleanup()
 
 def json_load_str_safe(obj: dict, key: str, default_value: str) -> str:
     if key in obj:
@@ -98,6 +100,7 @@ def get_mobile_vlc_kit_releases_assets(config: Configure, github: typing.Optiona
     result: dict[str, str] = dict()
     regexp = re.compile(r'MobileVLCKit-(\d+\.\d+\.\d+)\.xcframework\.zip')
     assets: PaginatedList.PaginatedList = release.get_assets()
+    print(f'get_mobile_vlc_kit_releases_assets {release}, {assets}')
     for idx in range(0, assets.totalCount):
         asset: GitReleaseAsset.GitReleaseAsset = assets[idx]
         # asset.browser_download_url
@@ -249,11 +252,11 @@ def convert_framework_to_xcframework(framework: str, xcframework: str, configure
         # framework_binary_name = os.path.splitext(framework_name)[0]
         binary_archives: list[str] = lipo_info(framework, full_path)
         parts: list[(list[str], bool)] = []
-        simulator_architecture = ["arm64", "i386", "x86_64"]
+        # simulator_architecture = ["arm64", "i386", "x86_64"]
         devices_architecture = ["arm64", "armv7", "armv7s"]
         if len(binary_archives) > 0:
             pick_architecture(binary_archives, devices_architecture, False, parts)
-            pick_architecture(binary_archives, simulator_architecture, True, parts)
+            # pick_architecture(binary_archives, simulator_architecture, True, parts)
             info_plist = os.path.join(xcframework, 'Info.plist')
             architecture_parts: list[(str, list[str])] = generate_info_plist(parts, info_plist, framework_name)
             for part in architecture_parts:
@@ -426,6 +429,28 @@ def file_tree_search_first(base_path: str, target_name: str) -> typing.Optional[
                 return os.path.join(path, name)
     return None
 
+def removeDirs(path:str):
+    for name in os.listdir(path):
+        full = os.path.join(path,name)
+        if os.path.isdir(full):
+            removeDirs(full)
+        else:
+            os.remove(full)
+    os.rmdir(path)
+
+def removeDsyms(base_path:str):
+    dSYMs:list[str] = []
+    for path, dir_list, file_list in os.walk(base_path):
+        for name in dir_list:
+            if name == "dSYMs":
+                dSYMs.append(os.path.join(path,name))
+    print(f'dSYMs==>{dSYMs}')
+    for path in dSYMs:
+        # for name in os.listdir(path):
+        #     if name.endswith('.framework.dSYM'):
+        #         removeDirs(os.path.join(path,name))
+        removeDirs(path)
+
 
 def convert_new_release_assets(path: str, version: str, temp_path: str, need_framewrok_convert: bool,
                                configure: Configure) -> \
@@ -462,11 +487,15 @@ def convert_new_release_assets(path: str, version: str, temp_path: str, need_fra
     if mobile_vlc_kit_xcframework is None:
         cleanup()
         return None
+
     if need_framewrok_convert:
         mobile_vlc_kit_framework = mobile_vlc_kit_xcframework
         mobile_vlc_kit_xcframework = f'{os.path.splitext(mobile_vlc_kit_xcframework)[0]}.xcframework'
+        removeDsyms(unarchive_path)
         convert_framework_to_xcframework(mobile_vlc_kit_framework, mobile_vlc_kit_xcframework, configure)
-
+    else:
+        print("delete dsym file")
+        removeDsyms(mobile_vlc_kit_xcframework)
     xcframework_zip_dir = os.path.join(temp_path, "xcframework-zip")
     mkdirs(xcframework_zip_dir)
     xcframework_zip = os.path.join(xcframework_zip_dir, f"MobileVLCKit-{version}.xcframework.zip")
@@ -692,11 +721,12 @@ def do_main():
         href = vlc_links[version]
         if version not in github_tags:
             convert_list[version] = href
-
+    github_file_links = {}
     for version in convert_list.keys():
         long_version = version_to_long(version)
         need_framewrok_convert = False
-        if long_version <= 2007009:
+        print(f'versionInfo:{version}->{long_version}')
+        if long_version <= 3005000:
             continue
         if long_version < 3003016:
             need_framewrok_convert = True
