@@ -10,7 +10,7 @@ import traceback
 import typing
 import zipfile
 from urllib.parse import urljoin, urlparse
-
+import plistlib
 import requests
 from bs4 import BeautifulSoup
 from github import Github, GitRelease, GitReleaseAsset, Repository, PaginatedList, Tag
@@ -450,6 +450,25 @@ def removeDsyms(base_path:str):
         #     if name.endswith('.framework.dSYM'):
         #         removeDirs(os.path.join(path,name))
         removeDirs(path)
+    # remove DebugSymbolsPath from info.plist
+    info_plist = os.path.join(base_path,"Info.plist");
+    if os.path.exists(info_plist):
+        with open(info_plist,'rb') as fp:
+            text = fp.read()
+            data = plistlib.loads(text)
+
+            AvailableLibraries:list[dict[str,any]] = data["AvailableLibraries"]
+            newAvailableLibraries = []
+            for item in AvailableLibraries:
+                if "SupportedPlatformVariant" in item and  "simulator" == str(item["SupportedPlatformVariant"]):
+                    continue
+                else:
+                    if "DebugSymbolsPath" in item:
+                        del item["DebugSymbolsPath"]
+                    newAvailableLibraries.append(item)
+            data["AvailableLibraries"] = newAvailableLibraries
+        with open(info_plist,'wb') as fp:
+            plistlib.dump(data,fp)
 
 
 def convert_new_release_assets(path: str, version: str, temp_path: str, need_framewrok_convert: bool,
@@ -496,6 +515,8 @@ def convert_new_release_assets(path: str, version: str, temp_path: str, need_fra
     else:
         print("delete dsym file")
         removeDsyms(mobile_vlc_kit_xcframework)
+
+
     xcframework_zip_dir = os.path.join(temp_path, "xcframework-zip")
     mkdirs(xcframework_zip_dir)
     xcframework_zip = os.path.join(xcframework_zip_dir, f"MobileVLCKit-{version}.xcframework.zip")
@@ -721,12 +742,12 @@ def do_main():
         href = vlc_links[version]
         if version not in github_tags:
             convert_list[version] = href
-    github_file_links = {}
+    # github_file_links = {}
     for version in convert_list.keys():
         long_version = version_to_long(version)
         need_framewrok_convert = False
         print(f'versionInfo:{version}->{long_version}')
-        if long_version <= 3005000:
+        if long_version <= 3004999:
             continue
         if long_version < 3003016:
             need_framewrok_convert = True
