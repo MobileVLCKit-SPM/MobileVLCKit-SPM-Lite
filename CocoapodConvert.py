@@ -19,7 +19,27 @@ from Shell import Shell
 import urllib
 urllib.request.urlcleanup()
 # urllib.urlcleanup()
+import logging
+import functools
 
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+def log_entry(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info(f"Entering {func.__name__} with args={args}, kwargs={kwargs}")
+        result = func(*args, **kwargs)
+        logger.info(f"Exiting {func.__name__}")
+        return result
+
+    return wrapper
+
+@log_entry
 def json_load_str_safe(obj: dict, key: str, default_value: str) -> str:
     if key in obj:
         return obj[key]
@@ -29,24 +49,25 @@ def json_load_str_safe(obj: dict, key: str, default_value: str) -> str:
 
 class Configure:
     def __init__(self):
-        cfg_path = os.path.join(os.path.dirname(__file__), "configure.json")
-        self.vlc_cocoapods_prod_url = "https://download.videolan.org/pub/cocoapods/prod/"
-        self.github_file_store_url = ""
-        self.github_tag_url = ""
-        self.github_token = ""
-        self.github_repo_name = ""
-        self.github_owner_name = ""
+        self.vlc_cocoapods_prod_url = os.environ.get(
+            "VLC_COCOAPODS_URL", "https://download.videolan.org/pub/cocoapods/prod/"
+        )
+        self.github_token = os.environ.get("GH_TOKEN")
+        github_repository = os.environ.get("GITHUB_REPOSITORY")
+        if github_repository:
+            repo_parts = github_repository.split("/")
+
+            self.github_owner_name = repo_parts[0]
+            self.github_repo_name = repo_parts[1]
+        else:
+            self.github_owner_name = ""
+            self.github_repo_name = ""
         self.github_release_id = ""
-        self.github_release_name = ""
-        self.temp_path = "./temp"
-        self.github_branch_name = "master"
-        self.lipo_path = "lipo"
-        self.cache_file_keep = "False"
-        with open(cfg_path) as fp:
-            self.cfg_json = json.load(fp)
-        self.load_attributes()
-        self.temp_path = os.path.abspath(self.temp_path)
-        self.cache_file_keep = self.cache_file_keep.lower().strip() == "true"
+        self.github_release_name = "FileStorage"
+        self.temp_path = os.environ.get("TEMP_PATH", "./temp")
+        self.github_branch_name = os.environ.get("GITHUB_BRANCH", "master")
+        self.lipo_path = os.environ.get("LIPO_PATH", "lipo")
+        self.cache_file_keep = os.environ.get("CACHE_FILE_KEEP", "False")
 
     def load_attributes(self):
         attributes = inspect.getmembers(self, lambda a: not (inspect.isroutine(a)))
@@ -62,6 +83,7 @@ class Configure:
                 setattr(self, property_name, value)
 
 
+@log_entry
 def full_href(base: str, path: str) -> str:
     if path.startswith("http://") or path.startswith("https://"):
         return path
@@ -69,7 +91,8 @@ def full_href(base: str, path: str) -> str:
         return urljoin(base, path)
 
 
-def analyse_tags_links(html: str, base_url: str, regexp: re) -> dict[str, str]:
+@log_entry
+def analyse_tags_links(html: str, base_url: str, regexp: re.Pattern[str]) -> dict[str, str]:
     links: dict[str, str] = dict()
     soup = BeautifulSoup(html, 'html.parser')
     tags = soup.find_all('a')
@@ -85,12 +108,14 @@ def analyse_tags_links(html: str, base_url: str, regexp: re) -> dict[str, str]:
     return links
 
 
+@log_entry
 def get_mobile_vlc_kit_links(href: str) -> dict[str, str]:
     text: str = requests.get(href).text
     regexp = re.compile(r'(MobileVLCKit-(\d+\.\d+\.\d+)([^\w]([\d\w\-])*){0,1}\.((tar.xz)|(zip)))')
     return analyse_tags_links(text, href, regexp)
 
 
+@log_entry
 def get_mobile_vlc_kit_releases_assets(config: Configure, github: typing.Optional[Github],
                                        repo: typing.Optional[Repository.Repository],
                                        release: typing.Optional[GitRelease.GitRelease]) -> (
@@ -115,6 +140,7 @@ def get_mobile_vlc_kit_releases_assets(config: Configure, github: typing.Optiona
     return result, github, repo, release
 
 
+@log_entry
 def get_mobile_vlc_kit_tags(config: Configure, github: typing.Optional[Github],
                             repo: typing.Optional[Repository.Repository]) -> (
         dict[str, str], typing.Optional[Github], typing.Optional[Repository.Repository]):
@@ -128,12 +154,14 @@ def get_mobile_vlc_kit_tags(config: Configure, github: typing.Optional[Github],
     return result, github, repo
 
 
+@log_entry
 def mkdirs(path: str):
     if not os.path.exists(path):
         mkdirs(os.path.dirname(path))
         os.mkdir(path)
 
 
+@log_entry
 def temp_do(do_func: typing.Callable[[str], bool], path: str, label: str) -> bool:
     if os.path.exists(path):
         print(f"{label} target path is exists")
@@ -165,6 +193,7 @@ def temp_do(do_func: typing.Callable[[str], bool], path: str, label: str) -> boo
     return result
 
 
+@log_entry
 def download_file(url: str, local_filename: str):
     if os.path.exists(local_filename):
         print(f"try download {url} file exists using cache")
@@ -184,6 +213,7 @@ def download_file(url: str, local_filename: str):
     return temp_do(_download, local_filename, f"download {url}")
 
 
+@log_entry
 def untar(src_file: str, dest_path: str, target_name: str, mode: str = 'r'):
     # base_name = os.path.basename(src_file)
     def _untar(temp_path: str) -> bool:
@@ -201,6 +231,7 @@ def untar(src_file: str, dest_path: str, target_name: str, mode: str = 'r'):
     temp_do(_untar, dest_path, f"untar {src_file}")
 
 
+@log_entry
 def unzip(src_file: str, dest_path: str, target_name: str):
     def _unzip(temp_path: str) -> bool:
         # unzip_dir_temp = f"{unzip_dir}_temp"
@@ -224,6 +255,7 @@ def unzip(src_file: str, dest_path: str, target_name: str):
     temp_do(_unzip, dest_path, f'unzip {src_file}')
 
 
+@log_entry
 def unxz(src_file: str, dest_path: str):
     def _unxz(temp_path: str) -> bool:
         with lzma.open(src_file, 'rb') as input_fp:
@@ -235,6 +267,7 @@ def unxz(src_file: str, dest_path: str):
     return temp_do(_unxz, dest_path, f'unxz {src_file}')
 
 
+@log_entry
 def convert_framework_to_xcframework(framework: str, xcframework: str, configure: Configure) -> bool:
     mkdirs(xcframework)
     system_path = os.getenv("PATH")
@@ -265,6 +298,7 @@ def convert_framework_to_xcframework(framework: str, xcframework: str, configure
     return False
 
 
+@log_entry
 def copy_file_or_dir(src: str, new_full: str):
     print(f'src={src}')
     if os.path.isdir(src):
@@ -273,6 +307,7 @@ def copy_file_or_dir(src: str, new_full: str):
         shutil.copyfile(src, new_full)
 
 
+@log_entry
 def generate_frameworks(framework: str, xcframework: str, architectures: list[str],
                         lipo_path: str) -> bool:
     framework_name = os.path.basename(framework)
@@ -312,6 +347,7 @@ def generate_frameworks(framework: str, xcframework: str, architectures: list[st
     return True
 
 
+@log_entry
 def pick_architecture(exists_architecture: list[str], want_architecture: list[str], platform: bool,
                       add_to_target: list[(list[str], bool)]) -> (list[str], bool):
     part: list[str] = []
@@ -323,6 +359,7 @@ def pick_architecture(exists_architecture: list[str], want_architecture: list[st
     return part, platform
 
 
+@log_entry
 def generate_info_plist(parts: list[(list[str], bool)], plist_path: str, framework_name: str) -> list[(str, list[str])]:
     result: list[(str, list[str])] = []
     available_libraries: list[str] = []
@@ -376,6 +413,7 @@ def generate_info_plist(parts: list[(list[str], bool)], plist_path: str, framewo
     return result
 
 
+@log_entry
 def lipo_info(framework_path: str, lipo_path: str) -> list[str]:
     binary_archives: list[str] = []
     framework_name = os.path.splitext(os.path.basename(framework_path))[0]
@@ -407,6 +445,7 @@ def lipo_info(framework_path: str, lipo_path: str) -> list[str]:
     return binary_archives
 
 
+@log_entry
 def download_cocoapod_archive_file(url: str, temp_path: str):
     temp_path = os.path.join(temp_path, "cocoapods")
     mkdirs(temp_path)
@@ -419,6 +458,7 @@ def download_cocoapod_archive_file(url: str, temp_path: str):
         return None
 
 
+@log_entry
 def file_tree_search_first(base_path: str, target_name: str) -> typing.Optional[str]:
     for path, dir_list, file_list in os.walk(base_path):
         for name in dir_list:
@@ -429,6 +469,7 @@ def file_tree_search_first(base_path: str, target_name: str) -> typing.Optional[
                 return os.path.join(path, name)
     return None
 
+@log_entry
 def removeDirs(path:str):
     for name in os.listdir(path):
         full = os.path.join(path,name)
@@ -438,6 +479,7 @@ def removeDirs(path:str):
             os.remove(full)
     os.rmdir(path)
 
+@log_entry
 def removeDsyms(base_path:str):
     dSYMs:list[str] = []
     for path, dir_list, file_list in os.walk(base_path):
@@ -471,6 +513,7 @@ def removeDsyms(base_path:str):
             plistlib.dump(data,fp)
 
 
+@log_entry
 def convert_new_release_assets(path: str, version: str, temp_path: str, need_framewrok_convert: bool,
                                configure: Configure) -> \
         typing.Optional[str]:
@@ -526,6 +569,7 @@ def convert_new_release_assets(path: str, version: str, temp_path: str, need_fra
         return None
 
 
+@log_entry
 def zip_folder(folder_path: str, target_zip_path: str) -> bool:
     folder_name = os.path.basename(folder_path)
 
@@ -556,6 +600,7 @@ def zip_folder(folder_path: str, target_zip_path: str) -> bool:
     return temp_do(_zip, target_zip_path, f'zip {os.path.basename(target_zip_path)}')
 
 
+@log_entry
 def setup_github_if_need(github: typing.Optional[Github], repo: typing.Optional[Repository.Repository],
                          release: typing.Optional[GitRelease.GitRelease], configure: Configure) -> \
         (typing.Optional[str], typing.Optional[str], typing.Optional[Github], typing.Optional[Repository.Repository],
@@ -578,6 +623,7 @@ def setup_github_if_need(github: typing.Optional[Github], repo: typing.Optional[
     return github, repo, release
 
 
+@log_entry
 def do_convert(version: str, file_url: str, configure: Configure,
                github: typing.Optional[Github] = None, repo: typing.Optional[Repository.Repository] = None,
                release: typing.Optional[GitRelease.GitRelease] = None, need_framewrok_convert: bool = False) -> \
@@ -615,6 +661,7 @@ def do_convert(version: str, file_url: str, configure: Configure,
     return asset.browser_download_url, sha, github, repo, release
 
 
+@log_entry
 def file_sha256(release_path: str):
     _256 = hashlib.sha256()
     current_position = 0
@@ -633,18 +680,21 @@ def file_sha256(release_path: str):
     return sha
 
 
+@log_entry
 def string_sha(url: str) -> str:
     _sha256 = hashlib.sha256()
     _sha256.update(url.encode('utf-8'))
     return _sha256.hexdigest()
 
 
+@log_entry
 def bytes_sha(data: bytes) -> str:
     _sha256 = hashlib.sha256()
     _sha256.update(data)
     return _sha256.hexdigest()
 
 
+@log_entry
 def add_tag(release_url: str, file_hash: str, version: str, configure: Configure, github: Github,
             repo: Repository) -> (Github, Repository):
     if repo is None:
@@ -696,6 +746,7 @@ def add_tag(release_url: str, file_hash: str, version: str, configure: Configure
     return github, repo
 
 
+@log_entry
 def cleanup_mini(configure: Configure):
     cocoapods = os.path.join(configure.temp_path, "cocoapods")
     if os.path.exists(cocoapods):
@@ -709,6 +760,7 @@ def cleanup_mini(configure: Configure):
                 os.unlink(full)
 
 
+@log_entry
 def version_to_long(version: str) -> int:
     version_long = 0
     comps = version.split(".")
@@ -717,6 +769,7 @@ def version_to_long(version: str) -> int:
     return version_long
 
 
+@log_entry
 def get_release_hash(url: str, configure: Configure) -> str:
     download_path = os.path.join(configure.temp_path, string_sha(url))
     download_file(url, download_path)
@@ -726,6 +779,7 @@ def get_release_hash(url: str, configure: Configure) -> str:
     return sha_value
 
 
+@log_entry
 def do_main():
     configure = Configure()
     github: typing.Optional[Github] = None
